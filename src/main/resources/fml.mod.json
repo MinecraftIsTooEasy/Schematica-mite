@@ -1,0 +1,18 @@
+{
+	"schemaVersion": 1,
+	"id": "schematica",
+	"version": "${version}",
+	"depends": {
+		"fishmodloader": ">=3.4.2"
+	},
+	"environment": "*",
+	"name": "Schematica",
+	"description": "Schematica core port for MITE",
+	"authors": ["Lunatrius", "hahahha (ported to MITE)", "AI"],
+	"entrypoints": {
+		"main": ["com.github.lunatrius.schematica.Schematica"]
+	},
+	"mixins": [
+		"schematica.mixins.json"
+	]
+}
