@@ -129,11 +129,11 @@ public abstract class GuiChatMixin {
 
     @Unique
     private boolean schematica$isSchematicaCommandContext(String beforeCursor) {
-        if (beforeCursor == null || beforeCursor.isEmpty()) {
+        if (beforeCursor == null || beforeCursor.isEmpty() || !beforeCursor.startsWith("/")) {
             return false;
         }
 
-        String commandText = beforeCursor.startsWith("/") ? beforeCursor.substring(1) : beforeCursor;
+        String commandText = beforeCursor.substring(1);
         if (commandText.isEmpty()) {
             return false;
         }
@@ -156,8 +156,10 @@ public abstract class GuiChatMixin {
     private List<String> schematica$collectSuggestions(String beforeCursor, String currentPrefixLower) {
         List<String> suggestions = new ArrayList<String>();
         String safePrefix = currentPrefixLower == null ? "" : currentPrefixLower;
-        boolean hasSlash = beforeCursor.startsWith("/");
-        String commandText = hasSlash ? beforeCursor.substring(1) : beforeCursor;
+        if (!beforeCursor.startsWith("/")) {
+            return suggestions;
+        }
+        String commandText = beforeCursor.substring(1);
 
         boolean endsWithSpace = commandText.endsWith(" ");
         String trimmed = commandText.trim();

@@ -2,7 +2,7 @@
 package com.github.lunatrius.worldgen;
 
 public class Test1SchematicWorldGenerator extends SchematicStructureGenerator {
-    private static final String RESOURCE_PATH = "/assets/schematica/structures/test1.schematic";
+    private static final String RESOURCE_PATH = "/assets/schematica/structures/10.schematic";
 
     public Test1SchematicWorldGenerator() {
         super(RESOURCE_PATH);

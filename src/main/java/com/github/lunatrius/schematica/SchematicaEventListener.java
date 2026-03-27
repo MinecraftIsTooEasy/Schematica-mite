@@ -3,17 +3,28 @@ package com.github.lunatrius.schematica;
 
 import com.github.lunatrius.schematica.api.ISchematic;
 import com.github.lunatrius.schematica.nbt.NBTHelper;
+import com.github.lunatrius.schematica.reference.Reference;
 import com.github.lunatrius.schematica.world.schematic.SchematicFormat;
 import com.github.lunatrius.schematica.world.storage.Schematic;
 import com.google.common.eventbus.Subscribe;
+import java.util.ArrayList;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
+import net.minecraft.AxisAlignedBB;
 import net.minecraft.Block;
+import net.minecraft.Entity;
+import net.minecraft.EntityList;
+import net.minecraft.EntityLivingBase;
+import net.minecraft.EntityPlayer;
+import net.minecraft.IInventory;
 import net.minecraft.ItemStack;
 import net.minecraft.Minecraft;
 import net.minecraft.NBTTagCompound;
+import net.minecraft.NBTTagDouble;
+import net.minecraft.NBTTagList;
 import net.minecraft.TileEntity;
 import net.minecraft.World;
 import net.xiaoyu233.fml.reload.event.HandleChatCommandEvent;
@@ -36,14 +47,15 @@ public class SchematicaEventListener {
         command = normalizeCommandAlias(command);
 
         String lower = command.toLowerCase(Locale.ROOT);
+        boolean clientWorld = isClientWorld(event);
 
-        if ("schematica_help".equals(lower)) {
+        if ("schematica help".equals(lower)) {
             event.setExecuteSuccess(true);
             sendHelp(event);
             return;
         }
 
-        if ("schematica_sel_status".equals(lower)) {
+        if ("schematica sel status".equals(lower)) {
             event.setExecuteSuccess(true);
             if (SchematicaRuntime.hasSelectionPos1) {
                 event.getPlayer().addChatMessage("Selection Pos1: [" + SchematicaRuntime.selectionPos1X + "," + SchematicaRuntime.selectionPos1Y + "," + SchematicaRuntime.selectionPos1Z + "]");
@@ -71,14 +83,14 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_sel_clear".equals(lower)) {
+        if ("schematica sel clear".equals(lower)) {
             event.setExecuteSuccess(true);
             SchematicaRuntime.clearSelection();
             event.getPlayer().addChatMessage("Selection cleared.");
             return;
         }
 
-        if ("schematica_list".equals(lower)) {
+        if ("schematica list".equals(lower)) {
             event.setExecuteSuccess(true);
             File[] files = getSchematicDir().listFiles(new FileFilterSchematic(false));
             int count = files == null ? 0 : files.length;
@@ -86,13 +98,13 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_load".equals(lower) || lower.startsWith("schematica_load ")) {
-            event.setExecuteSuccess(true);
-            String rawName = command.length() > "schematica_load".length()
-                    ? command.substring("schematica_load".length()).trim()
+        if ("schematica load".equals(lower) || lower.startsWith("schematica load ")) {
+            event.setExecuteSuccess(!clientWorld);
+            String rawName = command.length() > "schematica load".length()
+                    ? command.substring("schematica load".length()).trim()
                     : "";
             if (rawName.isEmpty()) {
-                event.getPlayer().addChatMessage("Usage: schematica load <name>");
+                event.getPlayer().addChatMessage("Usage: /schematica load <name>");
                 return;
             }
 
@@ -116,17 +128,17 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_unload".equals(lower)) {
-            event.setExecuteSuccess(true);
+        if ("schematica unload".equals(lower)) {
+            event.setExecuteSuccess(!clientWorld);
             SchematicaRuntime.clearLoadedSchematic();
             event.getPlayer().addChatMessage("Schematica projection unloaded.");
             return;
         }
 
-        if ("schematica_status".equals(lower)) {
-            event.setExecuteSuccess(true);
+        if ("schematica status".equals(lower)) {
+            event.setExecuteSuccess(!clientWorld);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
-                event.getPlayer().addChatMessage("No schematic loaded. Use schematica load <name>.");
+                event.getPlayer().addChatMessage("No schematic loaded. Use /schematica load <name>.");
                 return;
             }
 
@@ -141,8 +153,8 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_origin_here".equals(lower) || "schematica_origin here".equals(lower)) {
-            event.setExecuteSuccess(true);
+        if ("schematica origin here".equals(lower)) {
+            event.setExecuteSuccess(!clientWorld);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
                 event.getPlayer().addChatMessage("No schematic loaded.");
                 return;
@@ -156,8 +168,8 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_move".equals(lower) || lower.startsWith("schematica_move ")) {
-            event.setExecuteSuccess(true);
+        if ("schematica move".equals(lower) || lower.startsWith("schematica move ")) {
+            event.setExecuteSuccess(!clientWorld);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
                 event.getPlayer().addChatMessage("No schematic loaded.");
                 return;
@@ -165,7 +177,7 @@ public class SchematicaEventListener {
 
             String[] parts = command.split("\\s+");
             if (parts.length != 4) {
-                event.getPlayer().addChatMessage("Usage: schematica move <x> <y> <z>");
+                event.getPlayer().addChatMessage("Usage: /schematica move <x> <y> <z>");
                 return;
             }
 
@@ -186,8 +198,8 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_nudge".equals(lower) || lower.startsWith("schematica_nudge ")) {
-            event.setExecuteSuccess(true);
+        if ("schematica nudge".equals(lower) || lower.startsWith("schematica nudge ")) {
+            event.setExecuteSuccess(!clientWorld);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
                 event.getPlayer().addChatMessage("No schematic loaded.");
                 return;
@@ -195,7 +207,7 @@ public class SchematicaEventListener {
 
             String[] parts = command.split("\\s+");
             if (parts.length != 4) {
-                event.getPlayer().addChatMessage("Usage: schematica nudge <dx> <dy> <dz>");
+                event.getPlayer().addChatMessage("Usage: /schematica nudge <dx> <dy> <dz>");
                 return;
             }
 
@@ -219,8 +231,8 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_rotate".equals(lower) || lower.startsWith("schematica_rotate ")) {
-            event.setExecuteSuccess(true);
+        if ("schematica rotate".equals(lower) || lower.startsWith("schematica rotate ")) {
+            event.setExecuteSuccess(!clientWorld);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
                 event.getPlayer().addChatMessage("No schematic loaded.");
                 return;
@@ -228,7 +240,7 @@ public class SchematicaEventListener {
 
             String[] parts = command.split("\\s+");
             if (parts.length != 2) {
-                event.getPlayer().addChatMessage("Usage: schematica rotate <90|180|270>");
+                event.getPlayer().addChatMessage("Usage: /schematica rotate <90|180|270>");
                 return;
             }
 
@@ -260,8 +272,8 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_mirror".equals(lower) || lower.startsWith("schematica_mirror ")) {
-            event.setExecuteSuccess(true);
+        if ("schematica mirror".equals(lower) || lower.startsWith("schematica mirror ")) {
+            event.setExecuteSuccess(!clientWorld);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
                 event.getPlayer().addChatMessage("No schematic loaded.");
                 return;
@@ -269,7 +281,7 @@ public class SchematicaEventListener {
 
             String[] parts = command.split("\\s+");
             if (parts.length != 2) {
-                event.getPlayer().addChatMessage("Usage: schematica mirror <x|z>");
+                event.getPlayer().addChatMessage("Usage: /schematica mirror <x|z>");
                 return;
             }
 
@@ -295,7 +307,11 @@ public class SchematicaEventListener {
             return;
         }
 
-        if ("schematica_paste".equals(lower) || lower.startsWith("schematica_paste ")) {
+        if ("schematica paste".equals(lower) || lower.startsWith("schematica paste ")) {
+            if (clientWorld) {
+                event.setExecuteSuccess(false);
+                return;
+            }
             event.setExecuteSuccess(true);
             if (!SchematicaRuntime.hasLoadedSchematic()) {
                 event.getPlayer().addChatMessage("No schematic loaded.");
@@ -308,7 +324,7 @@ public class SchematicaEventListener {
 
             PasteMode mode = parsePasteMode(command);
             if (mode == null) {
-                event.getPlayer().addChatMessage("Usage: schematica paste [replace|solid|nonair]");
+                event.getPlayer().addChatMessage("Usage: /schematica paste [replace|solid|nonair]");
                 return;
             }
 
@@ -338,7 +354,8 @@ public class SchematicaEventListener {
                     schematic.getWidth(),
                     schematic.getHeight(),
                     schematic.getLength(),
-                    copyIcon(schematic));
+                    copyIcon(schematic),
+                    true);
             if (undo == null) {
                 event.getPlayer().addChatMessage("Failed to capture undo snapshot.");
                 return;
@@ -357,14 +374,19 @@ public class SchematicaEventListener {
                     SchematicaRuntime.originX,
                     SchematicaRuntime.originY,
                     SchematicaRuntime.originZ,
-                    mode);
+                    mode,
+                    hasEntityState(schematic));
 
             String name = SchematicaRuntime.loadedSchematicName == null ? "<unknown>" : SchematicaRuntime.loadedSchematicName;
-            event.getPlayer().addChatMessage("Pasted " + name + " mode=" + mode.id + ": placed=" + result.placed + ", cleared=" + result.cleared + ", tileEntities=" + result.tileEntities + ", unchanged=" + result.unchanged + (result.failed > 0 ? ", failed=" + result.failed : ""));
+            event.getPlayer().addChatMessage("Pasted " + name + " mode=" + mode.id + ": placed=" + result.placed + ", cleared=" + result.cleared + ", tileEntities=" + result.tileEntities + ", entities=" + result.entitiesSpawned + ", entityCleared=" + result.entitiesCleared + ", unchanged=" + result.unchanged + (result.failed > 0 ? ", failed=" + result.failed : "") + (result.tileEntityFailed > 0 ? ", tileEntityFailed=" + result.tileEntityFailed : "") + (result.entityFailed > 0 ? ", entityFailed=" + result.entityFailed : ""));
             return;
         }
 
-        if ("schematica_undo".equals(lower)) {
+        if ("schematica undo".equals(lower)) {
+            if (clientWorld) {
+                event.setExecuteSuccess(false);
+                return;
+            }
             event.setExecuteSuccess(true);
             if (!SchematicaRuntime.hasUndoSnapshot()) {
                 event.getPlayer().addChatMessage("No undo snapshot.");
@@ -394,18 +416,23 @@ public class SchematicaEventListener {
                     SchematicaRuntime.lastUndoOriginX,
                     SchematicaRuntime.lastUndoOriginY,
                     SchematicaRuntime.lastUndoOriginZ,
-                    PasteMode.REPLACE);
+                    PasteMode.REPLACE,
+                    true);
             String label = SchematicaRuntime.lastUndoLabel == null ? "<unknown>" : SchematicaRuntime.lastUndoLabel;
             SchematicaRuntime.clearUndoSnapshot();
-            event.getPlayer().addChatMessage("Undo restored " + label + ": placed=" + result.placed + ", cleared=" + result.cleared + ", tileEntities=" + result.tileEntities + ", unchanged=" + result.unchanged + (result.failed > 0 ? ", failed=" + result.failed : ""));
+            event.getPlayer().addChatMessage("Undo restored " + label + ": placed=" + result.placed + ", cleared=" + result.cleared + ", tileEntities=" + result.tileEntities + ", entities=" + result.entitiesSpawned + ", entityCleared=" + result.entitiesCleared + ", unchanged=" + result.unchanged + (result.failed > 0 ? ", failed=" + result.failed : "") + (result.tileEntityFailed > 0 ? ", tileEntityFailed=" + result.tileEntityFailed : "") + (result.entityFailed > 0 ? ", entityFailed=" + result.entityFailed : ""));
             return;
         }
 
-        if ("schematica_save".equals(lower) || lower.startsWith("schematica_save ")) {
+        if ("schematica save".equals(lower) || lower.startsWith("schematica save ")) {
+            if (clientWorld) {
+                event.setExecuteSuccess(false);
+                return;
+            }
             event.setExecuteSuccess(true);
             String[] parts = command.split("\\s+");
             if (parts.length < 8) {
-                event.getPlayer().addChatMessage("Usage: schematica save <x1> <y1> <z1> <x2> <y2> <z2> <name>");
+                event.getPlayer().addChatMessage("Usage: /schematica save <x1> <y1> <z1> <x2> <y2> <z2> <name>");
                 return;
             }
 
@@ -461,7 +488,7 @@ public class SchematicaEventListener {
                 icon = icon.copy();
             }
 
-            Schematic schematic = captureWorldRegion(event.getWorld(), minX, minY, minZ, width, height, length, icon);
+            Schematic schematic = captureWorldRegion(event.getWorld(), minX, minY, minZ, width, height, length, icon, true);
             if (schematic == null) {
                 event.getPlayer().addChatMessage("Failed to capture world region.");
                 return;
@@ -473,17 +500,22 @@ public class SchematicaEventListener {
                 return;
             }
 
-            event.getPlayer().addChatMessage("Saved " + outFile.getName() + " (" + width + "x" + height + "x" + length + ")");
+            int entityCount = getEntityStateCount(schematic);
+            event.getPlayer().addChatMessage("Saved " + outFile.getName() + " (" + width + "x" + height + "x" + length + ", entities=" + entityCount + ")");
             return;
         }
 
-        if ("schematica_create".equals(lower) || lower.startsWith("schematica_create ")) {
+        if ("schematica create".equals(lower) || lower.startsWith("schematica create ")) {
+            if (clientWorld) {
+                event.setExecuteSuccess(false);
+                return;
+            }
             event.setExecuteSuccess(true);
-            String rawName = command.length() > "schematica_create".length()
-                    ? command.substring("schematica_create".length()).trim()
+            String rawName = command.length() > "schematica create".length()
+                    ? command.substring("schematica create".length()).trim()
                     : "";
             if (rawName.isEmpty()) {
-                event.getPlayer().addChatMessage("Usage: schematica create <name>");
+                event.getPlayer().addChatMessage("Usage: /schematica create <name>");
                 return;
             }
             if (!SchematicaRuntime.hasSelection()) {
@@ -524,7 +556,7 @@ public class SchematicaEventListener {
                 icon = icon.copy();
             }
 
-            Schematic schematic = captureWorldRegion(event.getWorld(), minX, minY, minZ, width, height, length, icon);
+            Schematic schematic = captureWorldRegion(event.getWorld(), minX, minY, minZ, width, height, length, icon, true);
             if (schematic == null) {
                 event.getPlayer().addChatMessage("Failed to capture world region.");
                 return;
@@ -536,21 +568,27 @@ public class SchematicaEventListener {
             }
 
             SchematicaRuntime.setLoadedSchematic(schematic, minX, minY, minZ, outFile.getName());
-            event.getPlayer().addChatMessage("Created and loaded projection " + outFile.getName() + " (" + width + "x" + height + "x" + length + ") at [" + minX + "," + minY + "," + minZ + "]");
+            int entityCount = getEntityStateCount(schematic);
+            event.getPlayer().addChatMessage("Created and loaded projection " + outFile.getName() + " (" + width + "x" + height + "x" + length + ", entities=" + entityCount + ") at [" + minX + "," + minY + "," + minZ + "]");
             return;
         }
     }
 
+    private boolean isClientWorld(HandleChatCommandEvent event) {
+        World world = event.getWorld();
+        return world != null && world.isRemote;
+    }
+
     private void sendHelp(HandleChatCommandEvent event) {
         event.getPlayer().addChatMessage("Schematica commands:");
-        event.getPlayer().addChatMessage("schematica help | schematica list");
-        event.getPlayer().addChatMessage("schematica load <name> | schematica unload | schematica status");
-        event.getPlayer().addChatMessage("schematica origin here | schematica move <x> <y> <z> | schematica nudge <dx> <dy> <dz>");
-        event.getPlayer().addChatMessage("schematica rotate <90|180|270> | schematica mirror <x|z>");
-        event.getPlayer().addChatMessage("schematica paste [replace|solid|nonair] | schematica undo");
-        event.getPlayer().addChatMessage("schematica save <x1> <y1> <z1> <x2> <y2> <z2> <name>");
-        event.getPlayer().addChatMessage("schematica create <name> (from stick selection)");
-        event.getPlayer().addChatMessage("schematica sel status | schematica sel clear");
+        event.getPlayer().addChatMessage("/schematica help | /schematica list");
+        event.getPlayer().addChatMessage("/schematica load <name> | /schematica unload | /schematica status");
+        event.getPlayer().addChatMessage("/schematica origin here | /schematica move <x> <y> <z> | /schematica nudge <dx> <dy> <dz>");
+        event.getPlayer().addChatMessage("/schematica rotate <90|180|270> | /schematica mirror <x|z>");
+        event.getPlayer().addChatMessage("/schematica paste [replace|solid|nonair] | /schematica undo");
+        event.getPlayer().addChatMessage("/schematica save <x1> <y1> <z1> <x2> <y2> <z2> <name>");
+        event.getPlayer().addChatMessage("/schematica create <name> (from stick selection)");
+        event.getPlayer().addChatMessage("/schematica sel status | /schematica sel clear");
     }
 
     private String normalizeCommandAlias(String command) {
@@ -572,62 +610,62 @@ public class SchematicaEventListener {
             return trimmed;
         }
         if (parts.length == 1) {
-            return "schematica_help";
+            return "schematica help";
         }
 
         String sub = parts[1].toLowerCase(Locale.ROOT);
         if ("help".equals(sub)) {
-            return "schematica_help";
+            return "schematica help";
         }
         if ("list".equals(sub)) {
-            return "schematica_list";
+            return "schematica list";
         }
         if ("load".equals(sub)) {
-            return composeAliasedCommand("schematica_load", parts, 2);
+            return composeAliasedCommand("schematica load", parts, 2);
         }
         if ("unload".equals(sub)) {
-            return "schematica_unload";
+            return "schematica unload";
         }
         if ("status".equals(sub)) {
-            return "schematica_status";
+            return "schematica status";
         }
         if ("origin".equals(sub) && parts.length >= 3 && "here".equalsIgnoreCase(parts[2])) {
-            return "schematica_origin_here";
+            return "schematica origin here";
         }
         if ("move".equals(sub)) {
-            return composeAliasedCommand("schematica_move", parts, 2);
+            return composeAliasedCommand("schematica move", parts, 2);
         }
         if ("nudge".equals(sub)) {
-            return composeAliasedCommand("schematica_nudge", parts, 2);
+            return composeAliasedCommand("schematica nudge", parts, 2);
         }
         if ("rotate".equals(sub)) {
-            return composeAliasedCommand("schematica_rotate", parts, 2);
+            return composeAliasedCommand("schematica rotate", parts, 2);
         }
         if ("mirror".equals(sub)) {
-            return composeAliasedCommand("schematica_mirror", parts, 2);
+            return composeAliasedCommand("schematica mirror", parts, 2);
         }
         if ("paste".equals(sub)) {
-            return composeAliasedCommand("schematica_paste", parts, 2);
+            return composeAliasedCommand("schematica paste", parts, 2);
         }
         if ("undo".equals(sub)) {
-            return "schematica_undo";
+            return "schematica undo";
         }
         if ("save".equals(sub)) {
-            return composeAliasedCommand("schematica_save", parts, 2);
+            return composeAliasedCommand("schematica save", parts, 2);
         }
         if ("create".equals(sub)) {
-            return composeAliasedCommand("schematica_create", parts, 2);
+            return composeAliasedCommand("schematica create", parts, 2);
         }
         if ("sel".equals(sub) && parts.length >= 3) {
             if ("status".equalsIgnoreCase(parts[2])) {
-                return "schematica_sel_status";
+                return "schematica sel status";
             }
             if ("clear".equalsIgnoreCase(parts[2])) {
-                return "schematica_sel_clear";
+                return "schematica sel clear";
             }
         }
         if ("menu".equals(sub)) {
-            return "schematica_menu";
+            return "schematica menu";
         }
         return trimmed;
     }
@@ -666,14 +704,14 @@ public class SchematicaEventListener {
 
     private PasteMode parsePasteMode(String command) {
         String[] parts = command.trim().split("\\s+");
-        if (parts.length <= 1) {
+        if (parts.length <= 2) {
             return PasteMode.REPLACE;
         }
-        if (parts.length != 2) {
+        if (parts.length != 3) {
             return null;
         }
 
-        String mode = parts[1].toLowerCase(Locale.ROOT);
+        String mode = parts[2].toLowerCase(Locale.ROOT);
         if ("replace".equals(mode)) {
             return PasteMode.REPLACE;
         }
@@ -683,7 +721,7 @@ public class SchematicaEventListener {
         return null;
     }
 
-    private PasteResult pasteSchematic(World world, ISchematic schematic, int originX, int originY, int originZ, PasteMode mode) {
+    private PasteResult pasteSchematic(World world, ISchematic schematic, int originX, int originY, int originZ, PasteMode mode, boolean applyEntityState) {
         PasteResult result = new PasteResult();
         for (int x = 0; x < schematic.getWidth(); ++x) {
             for (int y = 0; y < schematic.getHeight(); ++y) {
@@ -747,17 +785,21 @@ public class SchematicaEventListener {
                 continue;
             }
 
-            TileEntity copied = copyTileEntity(tileEntity, wx, wy, wz);
-            if (copied != null) {
-                world.setBlockTileEntity(wx, wy, wz, copied);
+            if (applyTileEntityData(world, tileEntity, wx, wy, wz)) {
                 ++result.tileEntities;
+            } else {
+                ++result.tileEntityFailed;
             }
+        }
+
+        if (applyEntityState) {
+            replaceEntitiesInRegion(world, schematic, originX, originY, originZ, result);
         }
 
         return result;
     }
 
-    private Schematic captureWorldRegion(World world, int originX, int originY, int originZ, int width, int height, int length, ItemStack icon) {
+    private Schematic captureWorldRegion(World world, int originX, int originY, int originZ, int width, int height, int length, ItemStack icon, boolean includeEntities) {
         if (world == null || width <= 0 || height <= 0 || length <= 0) {
             return null;
         }
@@ -788,7 +830,313 @@ public class SchematicaEventListener {
             }
         }
 
+        if (includeEntities) {
+            captureEntitiesInRegion(world, schematic, originX, originY, originZ, width, height, length);
+        }
+
         return schematic;
+    }
+
+    private void captureEntitiesInRegion(World world, Schematic schematic, int originX, int originY, int originZ, int width, int height, int length) {
+        AxisAlignedBB bounds = AxisAlignedBB.getBoundingBox(
+                originX,
+                originY,
+                originZ,
+                originX + (double) width,
+                originY + (double) height,
+                originZ + (double) length);
+        List entities = getEntitiesInBounds(world, bounds);
+        int scanned = 0;
+        int eligible = 0;
+        int captured = 0;
+        int failed = 0;
+        for (Object object : entities) {
+            ++scanned;
+            if (!(object instanceof Entity)) {
+                continue;
+            }
+
+            Entity entity = (Entity) object;
+            if (entity instanceof EntityPlayer || !(entity instanceof EntityLivingBase)) {
+                continue;
+            }
+            ++eligible;
+
+            NBTTagCompound relativeTag = copyEntityTagRelative(entity, originX, originY, originZ);
+            if (relativeTag != null) {
+                schematic.addEntityTag(relativeTag);
+                ++captured;
+            } else {
+                ++failed;
+                if (failed <= 3) {
+                    Reference.logger.warn("Schematica entity capture failed for class={}, id={}", entity.getClass().getName(), EntityList.getEntityString(entity));
+                }
+            }
+        }
+        Reference.logger.info("Schematica entity capture: scanned={}, eligible={}, captured={}, failed={}, region=[{},{},{}] size={}x{}x{}",
+                scanned, eligible, captured, failed, originX, originY, originZ, width, height, length);
+    }
+
+    private NBTTagCompound copyEntityTagRelative(Entity entity, int originX, int originY, int originZ) {
+        if (entity == null || entity.isDead) {
+            return null;
+        }
+
+        try {
+            NBTTagCompound tag = NBTHelper.writeEntityToCompound(entity);
+            if (tag == null) {
+                return null;
+            }
+            offsetEntityPosition(tag, -originX, -originY, -originZ);
+            return tag;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Entity copyEntityAtWorldPosition(Entity entity, World world, int originX, int originY, int originZ) {
+        if (entity == null) {
+            return null;
+        }
+
+        try {
+            NBTTagCompound tag = NBTHelper.writeEntityToCompound(entity);
+            if (tag == null) {
+                return null;
+            }
+
+            offsetEntityPosition(tag, originX, originY, originZ);
+            return NBTHelper.readEntityFromCompound(tag, world);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void offsetEntityPosition(NBTTagCompound tag, int offsetX, int offsetY, int offsetZ) {
+        NBTTagList pos = tag.getTagList("Pos");
+        if (pos != null && pos.tagCount() >= 3
+                && pos.tagAt(0) instanceof NBTTagDouble
+                && pos.tagAt(1) instanceof NBTTagDouble
+                && pos.tagAt(2) instanceof NBTTagDouble) {
+            NBTTagList translated = new NBTTagList();
+            translated.appendTag(new NBTTagDouble(null, ((NBTTagDouble) pos.tagAt(0)).data + offsetX));
+            translated.appendTag(new NBTTagDouble(null, ((NBTTagDouble) pos.tagAt(1)).data + offsetY));
+            translated.appendTag(new NBTTagDouble(null, ((NBTTagDouble) pos.tagAt(2)).data + offsetZ));
+            tag.setTag("Pos", translated);
+        }
+
+        if (tag.hasKey("Riding")) {
+            NBTTagCompound riding = tag.getCompoundTag("Riding");
+            offsetEntityPosition(riding, offsetX, offsetY, offsetZ);
+            tag.setTag("Riding", riding);
+        }
+    }
+
+    private void replaceEntitiesInRegion(World world, ISchematic schematic, int originX, int originY, int originZ, PasteResult result) {
+        AxisAlignedBB bounds = AxisAlignedBB.getBoundingBox(
+                originX,
+                originY,
+                originZ,
+                originX + (double) schematic.getWidth(),
+                originY + (double) schematic.getHeight(),
+                originZ + (double) schematic.getLength());
+
+        List existing = getEntitiesInBounds(world, bounds);
+        for (Object object : existing) {
+            if (!(object instanceof Entity)) {
+                continue;
+            }
+
+            Entity entity = (Entity) object;
+            if (entity instanceof EntityPlayer || !(entity instanceof EntityLivingBase)) {
+                continue;
+            }
+            world.removeEntity(entity);
+            ++result.entitiesCleared;
+        }
+
+        if (schematic instanceof Schematic) {
+            List<NBTTagCompound> entityTags = ((Schematic)schematic).getEntityTags();
+            if (!entityTags.isEmpty()) {
+                for (NBTTagCompound sourceTag : entityTags) {
+                    if (sourceTag == null) {
+                        ++result.entityFailed;
+                        continue;
+                    }
+
+                    NBTTagCompound worldTag = (NBTTagCompound)sourceTag.copy();
+                    offsetEntityPosition(worldTag, originX, originY, originZ);
+                    Entity copied = NBTHelper.readEntityFromCompound(worldTag, world);
+                    if (copied == null) {
+                        ++result.entityFailed;
+                        continue;
+                    }
+
+                    if (world.spawnEntityInWorld(copied)) {
+                        ++result.entitiesSpawned;
+                    } else {
+                        ++result.entityFailed;
+                    }
+                }
+                return;
+            }
+        }
+
+        for (Entity entity : schematic.getEntities()) {
+            Entity copied = copyEntityAtWorldPosition(entity, world, originX, originY, originZ);
+            if (copied == null) {
+                ++result.entityFailed;
+                continue;
+            }
+
+            if (world.spawnEntityInWorld(copied)) {
+                ++result.entitiesSpawned;
+            } else {
+                ++result.entityFailed;
+            }
+        }
+    }
+
+    private List getEntitiesInBounds(World world, AxisAlignedBB bounds) {
+        List queried = world.getEntitiesWithinAABB(Entity.class, bounds);
+        if (queried != null && !queried.isEmpty()) {
+            return queried;
+        }
+
+        List loaded = world.getLoadedEntityList();
+        ArrayList<Entity> fallback = new ArrayList<Entity>();
+        if (loaded == null || loaded.isEmpty()) {
+            return fallback;
+        }
+
+        for (Object object : loaded) {
+            if (!(object instanceof Entity)) {
+                continue;
+            }
+
+            Entity entity = (Entity) object;
+            if (entity.boundingBox != null) {
+                if (entity.boundingBox.intersectsWith(bounds)) {
+                    fallback.add(entity);
+                }
+                continue;
+            }
+
+            if (entity.posX >= bounds.minX && entity.posX < bounds.maxX
+                    && entity.posY >= bounds.minY && entity.posY < bounds.maxY
+                    && entity.posZ >= bounds.minZ && entity.posZ < bounds.maxZ) {
+                fallback.add(entity);
+            }
+        }
+        return fallback;
+    }
+
+    private Entity copyEntityRotated(Entity entity, int sourceWidth, int sourceLength, int angle) {
+        if (entity == null) {
+            return null;
+        }
+
+        try {
+            World world = entity.worldObj;
+            if (world == null) {
+                return null;
+            }
+
+            NBTTagCompound tag = NBTHelper.writeEntityToCompound(entity);
+            if (tag == null) {
+                return null;
+            }
+
+            rotateEntityPosition(tag, sourceWidth, sourceLength, angle);
+            return NBTHelper.readEntityFromCompound(tag, world);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Entity copyEntityMirrored(Entity entity, int sourceWidth, int sourceLength, String axis) {
+        if (entity == null) {
+            return null;
+        }
+
+        try {
+            World world = entity.worldObj;
+            if (world == null) {
+                return null;
+            }
+
+            NBTTagCompound tag = NBTHelper.writeEntityToCompound(entity);
+            if (tag == null) {
+                return null;
+            }
+
+            mirrorEntityPosition(tag, sourceWidth, sourceLength, axis);
+            return NBTHelper.readEntityFromCompound(tag, world);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void rotateEntityPosition(NBTTagCompound tag, int sourceWidth, int sourceLength, int angle) {
+        NBTTagList pos = tag.getTagList("Pos");
+        if (pos != null && pos.tagCount() >= 3
+                && pos.tagAt(0) instanceof NBTTagDouble
+                && pos.tagAt(1) instanceof NBTTagDouble
+                && pos.tagAt(2) instanceof NBTTagDouble) {
+            double x = ((NBTTagDouble) pos.tagAt(0)).data;
+            double y = ((NBTTagDouble) pos.tagAt(1)).data;
+            double z = ((NBTTagDouble) pos.tagAt(2)).data;
+            double nx;
+            double nz;
+            if (angle == 90) {
+                nx = sourceLength - z;
+                nz = x;
+            } else if (angle == 180) {
+                nx = sourceWidth - x;
+                nz = sourceLength - z;
+            } else {
+                nx = z;
+                nz = sourceWidth - x;
+            }
+
+            NBTTagList transformed = new NBTTagList();
+            transformed.appendTag(new NBTTagDouble(null, nx));
+            transformed.appendTag(new NBTTagDouble(null, y));
+            transformed.appendTag(new NBTTagDouble(null, nz));
+            tag.setTag("Pos", transformed);
+        }
+
+        if (tag.hasKey("Riding")) {
+            NBTTagCompound riding = tag.getCompoundTag("Riding");
+            rotateEntityPosition(riding, sourceWidth, sourceLength, angle);
+            tag.setTag("Riding", riding);
+        }
+    }
+
+    private void mirrorEntityPosition(NBTTagCompound tag, int sourceWidth, int sourceLength, String axis) {
+        NBTTagList pos = tag.getTagList("Pos");
+        if (pos != null && pos.tagCount() >= 3
+                && pos.tagAt(0) instanceof NBTTagDouble
+                && pos.tagAt(1) instanceof NBTTagDouble
+                && pos.tagAt(2) instanceof NBTTagDouble) {
+            double x = ((NBTTagDouble) pos.tagAt(0)).data;
+            double y = ((NBTTagDouble) pos.tagAt(1)).data;
+            double z = ((NBTTagDouble) pos.tagAt(2)).data;
+            double nx = "x".equals(axis) ? sourceWidth - x : x;
+            double nz = "z".equals(axis) ? sourceLength - z : z;
+
+            NBTTagList transformed = new NBTTagList();
+            transformed.appendTag(new NBTTagDouble(null, nx));
+            transformed.appendTag(new NBTTagDouble(null, y));
+            transformed.appendTag(new NBTTagDouble(null, nz));
+            tag.setTag("Pos", transformed);
+        }
+
+        if (tag.hasKey("Riding")) {
+            NBTTagCompound riding = tag.getCompoundTag("Riding");
+            mirrorEntityPosition(riding, sourceWidth, sourceLength, axis);
+            tag.setTag("Riding", riding);
+        }
     }
 
     private ISchematic rotateSchematic(ISchematic source, int angle) {
@@ -841,6 +1189,24 @@ public class SchematicaEventListener {
             }
         }
 
+        if (source instanceof Schematic) {
+            for (NBTTagCompound sourceTag : ((Schematic)source).getEntityTags()) {
+                if (sourceTag == null) {
+                    continue;
+                }
+                NBTTagCompound transformed = (NBTTagCompound)sourceTag.copy();
+                rotateEntityPosition(transformed, source.getWidth(), source.getLength(), angle);
+                rotated.addEntityTag(transformed);
+            }
+        }
+
+        for (Entity entity : source.getEntities()) {
+            Entity copied = copyEntityRotated(entity, source.getWidth(), source.getLength(), angle);
+            if (copied != null) {
+                rotated.addEntity(copied);
+            }
+        }
+
         return rotated;
     }
 
@@ -868,6 +1234,24 @@ public class SchematicaEventListener {
             }
         }
 
+        if (source instanceof Schematic) {
+            for (NBTTagCompound sourceTag : ((Schematic)source).getEntityTags()) {
+                if (sourceTag == null) {
+                    continue;
+                }
+                NBTTagCompound transformed = (NBTTagCompound)sourceTag.copy();
+                mirrorEntityPosition(transformed, source.getWidth(), source.getLength(), axis);
+                mirrored.addEntityTag(transformed);
+            }
+        }
+
+        for (Entity entity : source.getEntities()) {
+            Entity copied = copyEntityMirrored(entity, source.getWidth(), source.getLength(), axis);
+            if (copied != null) {
+                mirrored.addEntity(copied);
+            }
+        }
+
         return mirrored;
     }
 
@@ -883,12 +1267,66 @@ public class SchematicaEventListener {
         }
     }
 
+    private boolean applyTileEntityData(World world, TileEntity source, int x, int y, int z) {
+        if (world == null || source == null) {
+            return false;
+        }
+
+        try {
+            NBTTagCompound tag = NBTHelper.writeTileEntityToCompound(source);
+            if (tag == null) {
+                return false;
+            }
+            tag.setInteger("x", x);
+            tag.setInteger("y", y);
+            tag.setInteger("z", z);
+
+            TileEntity existing = world.getBlockTileEntity(x, y, z);
+            if (existing != null) {
+                existing.readFromNBT(tag);
+                existing.updateContainingBlockInfo();
+                if (existing instanceof IInventory) {
+                    ((IInventory)existing).onInventoryChanged();
+                }
+                return true;
+            }
+
+            TileEntity recreated = NBTHelper.readTileEntityFromCompound(tag);
+            if (recreated == null) {
+                return false;
+            }
+            world.setBlockTileEntity(x, y, z, recreated);
+
+            TileEntity placed = world.getBlockTileEntity(x, y, z);
+            if (placed instanceof IInventory) {
+                ((IInventory)placed).onInventoryChanged();
+            }
+            return placed != null;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private ItemStack copyIcon(ISchematic schematic) {
         ItemStack icon = schematic.getIcon();
         if (icon == null) {
             return new ItemStack((Block) Block.stone);
         }
         return icon.copy();
+    }
+
+    private boolean hasEntityState(ISchematic schematic) {
+        return getEntityStateCount(schematic) > 0;
+    }
+
+    private int getEntityStateCount(ISchematic schematic) {
+        if (schematic instanceof Schematic) {
+            int tagCount = ((Schematic)schematic).getEntityTags().size();
+            if (tagCount > 0) {
+                return tagCount;
+            }
+        }
+        return schematic.getEntities().size();
     }
 
     private File getSchematicDir() {
@@ -951,8 +1389,12 @@ public class SchematicaEventListener {
         private int placed;
         private int cleared;
         private int tileEntities;
+        private int tileEntityFailed;
+        private int entitiesSpawned;
+        private int entitiesCleared;
         private int unchanged;
         private int failed;
+        private int entityFailed;
     }
 }
 

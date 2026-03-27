@@ -5,12 +5,21 @@ import com.github.lunatrius.schematica.api.ISchematic;
 import com.github.lunatrius.schematica.nbt.NBTHelper;
 import com.github.lunatrius.schematica.reference.Reference;
 import com.github.lunatrius.schematica.world.schematic.SchematicFormat;
+import com.github.lunatrius.schematica.world.storage.Schematic;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Random;
 import net.minecraft.Block;
 import net.minecraft.CompressedStreamTools;
+import net.minecraft.Entity;
+import net.minecraft.EntityPlayer;
+import net.minecraft.IInventory;
+import net.minecraft.ItemStack;
 import net.minecraft.NBTTagCompound;
+import net.minecraft.NBTTagDouble;
+import net.minecraft.NBTTagList;
 import net.minecraft.TileEntity;
+import net.minecraft.WeightedRandomChestContent;
 import net.minecraft.World;
 import net.minecraft.WorldGenerator;
 
@@ -28,7 +37,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
 
     @Override
     public boolean generate(World world, Random random, int x, int y, int z) {
-        if (world == null) {
+        if (world == null || world.isRemote) {
             return false;
         }
         if (!ensureSchematicLoaded() || this.schematic == null) {
@@ -73,6 +82,8 @@ public class SchematicStructureGenerator extends WorldGenerator {
             }
         }
 
+        int lootChestGenerated = 0;
+        int lootChestFailed = 0;
         for (TileEntity tileEntity : this.schematic.getTileEntities()) {
             if (tileEntity == null) {
                 continue;
@@ -93,13 +104,116 @@ public class SchematicStructureGenerator extends WorldGenerator {
                 continue;
             }
 
-            TileEntity copied = copyTileEntity(tileEntity, wx, wy, wz);
-            if (copied != null) {
-                world.setBlockTileEntity(wx, wy, wz, copied);
+            int lootLevel = detectLootChestLevel(sourceBlock, tileEntity);
+            if (!applyTileEntityData(world, tileEntity, wx, wy, wz)) {
+                if (lootLevel > 0) {
+                    ++lootChestFailed;
+                }
+                continue;
+            }
+
+            if (lootLevel > 0) {
+                if (populateLootChest(world, random, wx, wy, wz, lootLevel)) {
+                    ++lootChestGenerated;
+                } else {
+                    ++lootChestFailed;
+                }
             }
         }
 
+        if (lootChestFailed > 0) {
+            Reference.logger.warn("Worldgen schematic {} loot chest result: generated={}, failed={}, origin=[{},{},{}]",
+                    this.resourcePath,
+                    lootChestGenerated,
+                    lootChestFailed,
+                    originX,
+                    originY,
+                    originZ);
+        } else if (lootChestGenerated > 0) {
+            Reference.logger.info("Worldgen schematic {} generated {} marker loot chests at [{},{},{}]",
+                    this.resourcePath,
+                    lootChestGenerated,
+                    originX,
+                    originY,
+                    originZ);
+        }
+
+        EntitySpawnResult entitySpawnResult = spawnEntities(world, originX, originY, originZ);
+        if (entitySpawnResult.failed > 0) {
+            Reference.logger.warn("Worldgen schematic {} entity spawn result: spawned={}, failed={}, origin=[{},{},{}]",
+                    this.resourcePath,
+                    entitySpawnResult.spawned,
+                    entitySpawnResult.failed,
+                    originX,
+                    originY,
+                    originZ);
+        } else if (entitySpawnResult.spawned > 0) {
+            Reference.logger.info("Worldgen schematic {} spawned {} entities at [{},{},{}]",
+                    this.resourcePath,
+                    entitySpawnResult.spawned,
+                    originX,
+                    originY,
+                    originZ);
+        }
+
         return true;
+    }
+
+    private EntitySpawnResult spawnEntities(World world, int originX, int originY, int originZ) {
+        EntitySpawnResult result = new EntitySpawnResult();
+        if (world == null || this.schematic == null) {
+            return result;
+        }
+
+        if (this.schematic instanceof Schematic) {
+            List<NBTTagCompound> entityTags = ((Schematic)this.schematic).getEntityTags();
+            if (!entityTags.isEmpty()) {
+                for (NBTTagCompound sourceTag : entityTags) {
+                    if (sourceTag == null) {
+                        ++result.failed;
+                        continue;
+                    }
+
+                    NBTTagCompound worldTag = (NBTTagCompound)sourceTag.copy();
+                    offsetEntityPosition(worldTag, originX, originY, originZ);
+                    Entity copied = NBTHelper.readEntityFromCompound(worldTag, world);
+                    if (copied == null || copied instanceof EntityPlayer) {
+                        ++result.failed;
+                        continue;
+                    }
+                    if (copied.posY < MIN_WORLD_Y || copied.posY > MAX_WORLD_Y) {
+                        ++result.failed;
+                        continue;
+                    }
+
+                    if (world.spawnEntityInWorld(copied)) {
+                        ++result.spawned;
+                    } else {
+                        ++result.failed;
+                    }
+                }
+                return result;
+            }
+        }
+
+        for (Entity sourceEntity : this.schematic.getEntities()) {
+            Entity copied = copyEntityAtWorldPosition(sourceEntity, world, originX, originY, originZ);
+            if (copied == null || copied instanceof EntityPlayer) {
+                ++result.failed;
+                continue;
+            }
+            if (copied.posY < MIN_WORLD_Y || copied.posY > MAX_WORLD_Y) {
+                ++result.failed;
+                continue;
+            }
+
+            if (world.spawnEntityInWorld(copied)) {
+                ++result.spawned;
+            } else {
+                ++result.failed;
+            }
+        }
+        return result;
     }
 
     private boolean ensureSchematicLoaded() {
@@ -144,15 +258,159 @@ public class SchematicStructureGenerator extends WorldGenerator {
         }
     }
 
-    private static TileEntity copyTileEntity(TileEntity tileEntity, int x, int y, int z) {
+    private static boolean applyTileEntityData(World world, TileEntity source, int x, int y, int z) {
+        if (world == null || source == null) {
+            return false;
+        }
+
         try {
-            NBTTagCompound tag = NBTHelper.writeTileEntityToCompound(tileEntity);
+            NBTTagCompound tag = NBTHelper.writeTileEntityToCompound(source);
+            if (tag == null) {
+                return false;
+            }
             tag.setInteger("x", x);
             tag.setInteger("y", y);
             tag.setInteger("z", z);
-            return NBTHelper.readTileEntityFromCompound(tag);
+
+            TileEntity existing = world.getBlockTileEntity(x, y, z);
+            if (existing != null) {
+                existing.readFromNBT(tag);
+                existing.updateContainingBlockInfo();
+                if (existing instanceof IInventory) {
+                    ((IInventory)existing).onInventoryChanged();
+                }
+                return true;
+            }
+
+            TileEntity recreated = NBTHelper.readTileEntityFromCompound(tag);
+            if (recreated == null) {
+                return false;
+            }
+            world.setBlockTileEntity(x, y, z, recreated);
+            TileEntity placed = world.getBlockTileEntity(x, y, z);
+            if (placed instanceof IInventory) {
+                ((IInventory)placed).onInventoryChanged();
+            }
+            return placed != null;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static int detectLootChestLevel(Block sourceBlock, TileEntity sourceTileEntity) {
+        if (!isLootChestBlock(sourceBlock) || !(sourceTileEntity instanceof IInventory)) {
+            return 0;
+        }
+
+        IInventory inventory = (IInventory)sourceTileEntity;
+        ItemStack markerStack = null;
+        for (int slot = 0; slot < inventory.getSizeInventory(); ++slot) {
+            ItemStack stack = inventory.getStackInSlot(slot);
+            if (stack == null || stack.stackSize <= 0) {
+                continue;
+            }
+            if (markerStack != null) {
+                return 0;
+            }
+            markerStack = stack;
+        }
+
+        return WeightedTreasurePieces.getLevelForMarker(markerStack);
+    }
+
+    private static boolean isLootChestBlock(Block block) {
+        if (block == null) {
+            return false;
+        }
+
+        int blockId = block.blockID;
+        return blockId == Block.chest.blockID
+                || blockId == Block.chestTrapped.blockID
+                || blockId == Block.chestCopper.blockID
+                || blockId == Block.chestSilver.blockID
+                || blockId == Block.chestGold.blockID
+                || blockId == Block.chestIron.blockID
+                || blockId == Block.chestMithril.blockID
+                || blockId == Block.chestAdamantium.blockID
+                || blockId == Block.chestAncientMetal.blockID;
+    }
+
+    private static boolean populateLootChest(World world, Random random, int x, int y, int z, int level) {
+        if (world == null || level <= 0) {
+            return false;
+        }
+
+        TileEntity tileEntity = world.getBlockTileEntity(x, y, z);
+        if (!(tileEntity instanceof IInventory)) {
+            return false;
+        }
+
+        IInventory inventory = (IInventory)tileEntity;
+        clearInventory(inventory);
+
+        WeightedRandomChestContent[] contents = WeightedTreasurePieces.getContentsForLevel(level);
+        int rollCount = WeightedTreasurePieces.getRollCount(random, level);
+        if (contents.length > 0 && rollCount > 0 && random != null) {
+            WeightedRandomChestContent.generateChestContents(
+                    world,
+                    y,
+                    random,
+                    contents,
+                    inventory,
+                    rollCount,
+                    WeightedTreasurePieces.getArtifactChances(level)
+            );
+        }
+        inventory.onInventoryChanged();
+        return true;
+    }
+
+    private static void clearInventory(IInventory inventory) {
+        for (int slot = 0; slot < inventory.getSizeInventory(); ++slot) {
+            inventory.setInventorySlotContents(slot, null);
+        }
+    }
+
+    private static Entity copyEntityAtWorldPosition(Entity entity, World world, int originX, int originY, int originZ) {
+        if (entity == null || world == null) {
+            return null;
+        }
+
+        try {
+            NBTTagCompound tag = NBTHelper.writeEntityToCompound(entity);
+            if (tag == null) {
+                return null;
+            }
+
+            offsetEntityPosition(tag, originX, originY, originZ);
+            return NBTHelper.readEntityFromCompound(tag, world);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static void offsetEntityPosition(NBTTagCompound tag, int offsetX, int offsetY, int offsetZ) {
+        NBTTagList pos = tag.getTagList("Pos");
+        if (pos != null && pos.tagCount() >= 3
+                && pos.tagAt(0) instanceof NBTTagDouble
+                && pos.tagAt(1) instanceof NBTTagDouble
+                && pos.tagAt(2) instanceof NBTTagDouble) {
+            NBTTagList translated = new NBTTagList();
+            translated.appendTag(new NBTTagDouble(null, ((NBTTagDouble)pos.tagAt(0)).data + offsetX));
+            translated.appendTag(new NBTTagDouble(null, ((NBTTagDouble)pos.tagAt(1)).data + offsetY));
+            translated.appendTag(new NBTTagDouble(null, ((NBTTagDouble)pos.tagAt(2)).data + offsetZ));
+            tag.setTag("Pos", translated);
+        }
+
+        if (tag.hasKey("Riding")) {
+            NBTTagCompound riding = tag.getCompoundTag("Riding");
+            offsetEntityPosition(riding, offsetX, offsetY, offsetZ);
+            tag.setTag("Riding", riding);
+        }
+    }
+
+    private static final class EntitySpawnResult {
+        private int spawned;
+        private int failed;
     }
 }

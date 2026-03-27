@@ -29,9 +29,10 @@ public abstract class EntityClientPlayerMPMixin {
         }
 
         String trimmed = command.trim();
-        if (trimmed.startsWith("/")) {
-            trimmed = trimmed.substring(1).trim();
+        if (!trimmed.startsWith("/")) {
+            return false;
         }
+        trimmed = trimmed.substring(1).trim();
 
         if (trimmed.isEmpty()) {
             return false;
@@ -39,31 +40,31 @@ public abstract class EntityClientPlayerMPMixin {
         trimmed = schematica$normalizeCommandAlias(trimmed);
 
         String lower = trimmed.toLowerCase(Locale.ROOT);
-        if (!(lower.equals("schematica_list")
-                || lower.equals("schematica_load")
-                || lower.startsWith("schematica_load ")
-                || lower.equals("schematica_save")
-                || lower.startsWith("schematica_save ")
-                || lower.equals("schematica_create")
-                || lower.startsWith("schematica_create ")
-                || lower.equals("schematica_sel_status")
-                || lower.equals("schematica_sel_clear")
-                || lower.equals("schematica_unload")
-                || lower.equals("schematica_move")
-                || lower.startsWith("schematica_move ")
-                || lower.equals("schematica_nudge")
-                || lower.startsWith("schematica_nudge ")
-                || lower.equals("schematica_rotate")
-                || lower.startsWith("schematica_rotate ")
-                || lower.equals("schematica_mirror")
-                || lower.startsWith("schematica_mirror ")
-                || lower.equals("schematica_origin_here")
-                || lower.equals("schematica_status")
-                || lower.equals("schematica_help")
-                || lower.equals("schematica_paste")
-                || lower.startsWith("schematica_paste ")
-                || lower.equals("schematica_menu")
-                || lower.equals("schematica_undo"))) {
+        if (!(lower.equals("schematica list")
+                || lower.equals("schematica load")
+                || lower.startsWith("schematica load ")
+                || lower.equals("schematica save")
+                || lower.startsWith("schematica save ")
+                || lower.equals("schematica create")
+                || lower.startsWith("schematica create ")
+                || lower.equals("schematica sel status")
+                || lower.equals("schematica sel clear")
+                || lower.equals("schematica unload")
+                || lower.equals("schematica move")
+                || lower.startsWith("schematica move ")
+                || lower.equals("schematica nudge")
+                || lower.startsWith("schematica nudge ")
+                || lower.equals("schematica rotate")
+                || lower.startsWith("schematica rotate ")
+                || lower.equals("schematica mirror")
+                || lower.startsWith("schematica mirror ")
+                || lower.equals("schematica origin here")
+                || lower.equals("schematica status")
+                || lower.equals("schematica help")
+                || lower.equals("schematica paste")
+                || lower.startsWith("schematica paste ")
+                || lower.equals("schematica menu")
+                || lower.equals("schematica undo"))) {
             return false;
         }
 
@@ -72,7 +73,7 @@ public abstract class EntityClientPlayerMPMixin {
             return false;
         }
 
-        if ("schematica_menu".equals(lower)) {
+        if ("schematica menu".equals(lower)) {
             mc.displayGuiScreen(new GuiSchematicaControl());
             return true;
         }
@@ -97,62 +98,62 @@ public abstract class EntityClientPlayerMPMixin {
             return trimmed;
         }
         if (parts.length == 1) {
-            return "schematica_help";
+            return "schematica help";
         }
 
         String sub = parts[1].toLowerCase(Locale.ROOT);
         if ("help".equals(sub)) {
-            return "schematica_help";
+            return "schematica help";
         }
         if ("list".equals(sub)) {
-            return "schematica_list";
+            return "schematica list";
         }
         if ("load".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_load", parts, 2);
+            return schematica$composeAliasedCommand("schematica load", parts, 2);
         }
         if ("unload".equals(sub)) {
-            return "schematica_unload";
+            return "schematica unload";
         }
         if ("status".equals(sub)) {
-            return "schematica_status";
+            return "schematica status";
         }
         if ("origin".equals(sub) && parts.length >= 3 && "here".equalsIgnoreCase(parts[2])) {
-            return "schematica_origin_here";
+            return "schematica origin here";
         }
         if ("move".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_move", parts, 2);
+            return schematica$composeAliasedCommand("schematica move", parts, 2);
         }
         if ("nudge".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_nudge", parts, 2);
+            return schematica$composeAliasedCommand("schematica nudge", parts, 2);
         }
         if ("rotate".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_rotate", parts, 2);
+            return schematica$composeAliasedCommand("schematica rotate", parts, 2);
         }
         if ("mirror".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_mirror", parts, 2);
+            return schematica$composeAliasedCommand("schematica mirror", parts, 2);
         }
         if ("paste".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_paste", parts, 2);
+            return schematica$composeAliasedCommand("schematica paste", parts, 2);
         }
         if ("undo".equals(sub)) {
-            return "schematica_undo";
+            return "schematica undo";
         }
         if ("save".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_save", parts, 2);
+            return schematica$composeAliasedCommand("schematica save", parts, 2);
         }
         if ("create".equals(sub)) {
-            return schematica$composeAliasedCommand("schematica_create", parts, 2);
+            return schematica$composeAliasedCommand("schematica create", parts, 2);
         }
         if ("sel".equals(sub) && parts.length >= 3) {
             if ("status".equalsIgnoreCase(parts[2])) {
-                return "schematica_sel_status";
+                return "schematica sel status";
             }
             if ("clear".equalsIgnoreCase(parts[2])) {
-                return "schematica_sel_clear";
+                return "schematica sel clear";
             }
         }
         if ("menu".equals(sub)) {
-            return "schematica_menu";
+            return "schematica menu";
         }
         return trimmed;
     }

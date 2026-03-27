@@ -10,6 +10,7 @@ import net.minecraft.Block;
 import net.minecraft.Entity;
 import net.minecraft.EntityPlayer;
 import net.minecraft.ItemStack;
+import net.minecraft.NBTTagCompound;
 import net.minecraft.TileEntity;
 
 public class Schematic
@@ -20,6 +21,7 @@ implements ISchematic {
     private final byte[][][] metadata;
     private final List<TileEntity> tileEntities = new ArrayList<TileEntity>();
     private final List<Entity> entities = new ArrayList<Entity>();
+    private final List<NBTTagCompound> entityTags = new ArrayList<NBTTagCompound>();
     private final int width;
     private final int height;
     private final int length;
@@ -111,6 +113,21 @@ implements ISchematic {
     @Override
     public List<Entity> getEntities() {
         return this.entities;
+    }
+
+    public List<NBTTagCompound> getEntityTags() {
+        return this.entityTags;
+    }
+
+    public void addEntityTag(NBTTagCompound entityTag) {
+        if (entityTag == null) {
+            return;
+        }
+        this.entityTags.add((NBTTagCompound)entityTag.copy());
+    }
+
+    public void clearEntityTags() {
+        this.entityTags.clear();
     }
 
     @Override

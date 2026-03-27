@@ -101,7 +101,7 @@ public abstract class MinecraftMixin {
             long volume = (long) width * height * length;
             this.thePlayer.addChatMessage("Selection ready: [" + minX + "," + minY + "," + minZ + "] -> [" + maxX + "," + maxY + "," + maxZ + "]  "
                     + width + "x" + height + "x" + length + " (" + volume + " blocks)");
-            this.thePlayer.addChatMessage("Use: schematica create <name>");
+            this.thePlayer.addChatMessage("Use: /schematica create <name>");
         }
     }
 }

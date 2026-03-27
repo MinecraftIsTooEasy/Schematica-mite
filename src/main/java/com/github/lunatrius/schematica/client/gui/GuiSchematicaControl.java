@@ -518,7 +518,14 @@ public class GuiSchematicaControl extends GuiScreen {
         if (this.mc == null || this.mc.thePlayer == null || command == null || command.isEmpty()) {
             return;
         }
-        this.mc.thePlayer.sendChatMessage(command);
+        String trimmed = command.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        if (!trimmed.startsWith("/")) {
+            trimmed = "/" + trimmed;
+        }
+        this.mc.thePlayer.sendChatMessage(trimmed);
     }
 
     private void sendLocalMessage(String message) {

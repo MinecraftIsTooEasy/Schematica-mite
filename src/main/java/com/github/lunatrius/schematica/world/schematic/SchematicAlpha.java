@@ -109,6 +109,18 @@ public class SchematicAlpha extends SchematicFormat {
                 Reference.logger.error("TileEntity failed to load properly!", e);
             }
         }
+
+        NBTTagList entitiesList = tagCompound.getTagList("Entities");
+        if (entitiesList.tagCount() > 0) {
+            for (int i = 0; i < entitiesList.tagCount(); ++i) {
+                NBTBase base = entitiesList.tagAt(i);
+                if (!(base instanceof NBTTagCompound)) {
+                    continue;
+                }
+                schematic.addEntityTag((NBTTagCompound)((NBTTagCompound)base).copy());
+            }
+        }
+
         return schematic;
     }
 
@@ -173,15 +185,27 @@ public class SchematicAlpha extends SchematicFormat {
         }
 
         NBTTagList entityList = new NBTTagList();
-        List<Entity> entities = schematic.getEntities();
-        for (Entity entity : entities) {
-            try {
-                NBTTagCompound entityCompound = NBTHelper.writeEntityToCompound(entity);
-                if (entityCompound != null) {
-                    entityList.appendTag(entityCompound);
+        if (schematic instanceof Schematic) {
+            List<NBTTagCompound> entityTags = ((Schematic)schematic).getEntityTags();
+            for (NBTTagCompound entityTag : entityTags) {
+                if (entityTag == null) {
+                    continue;
                 }
-            } catch (Throwable t) {
-                Reference.logger.error("Entity {} failed to save, skipping!", entity, t);
+                entityList.appendTag(entityTag.copy());
+            }
+        }
+
+        if (entityList.tagCount() == 0) {
+            List<Entity> entities = schematic.getEntities();
+            for (Entity entity : entities) {
+                try {
+                    NBTTagCompound entityCompound = NBTHelper.writeEntityToCompound(entity);
+                    if (entityCompound != null) {
+                        entityList.appendTag(entityCompound);
+                    }
+                } catch (Throwable t) {
+                    Reference.logger.error("Entity {} failed to save, skipping!", entity, t);
+                }
             }
         }
 
