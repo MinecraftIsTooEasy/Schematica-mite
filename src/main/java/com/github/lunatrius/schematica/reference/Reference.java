@@ -8,7 +8,7 @@ import org.apache.logging.log4j.Logger;
 public class Reference {
     public static final String MODID = "schematica";
     public static final String NAME = "Schematica";
-    public static final String VERSION = "0.1.0-mite";
+    public static final String VERSION = "0.3.0";
     public static final String MINECRAFT = "1.6.4-MITE";
     public static Logger logger = LogManager.getLogger((String)"Schematica");
 }

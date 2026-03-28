@@ -13,6 +13,7 @@ public class Schematica implements ModInitializer {
     public void onInitialize() {
         ModResourceManager.addResourcePackDomain("schematica");
         MITEEvents.MITE_EVENT_BUS.register(new SchematicaEventListener());
+        MITEEvents.MITE_EVENT_BUS.register(new SchematicaRegistrationListener());
 
         Handlers.BiomeDecoration.registerPre(SchematicWorldgenRegistration::registerExample);
 

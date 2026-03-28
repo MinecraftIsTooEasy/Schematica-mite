@@ -53,3 +53,11 @@ schematica.key.control=调整Schematic文件
 # commands - remove
 
 # commands - download
+
+# entities
+entity.MudMan1.name=泥人1级
+entity.MudMan2.name=泥人2级
+entity.MudMan3.name=泥人3级
+item.mud_man_1_spawn_egg.name=泥人1级刷怪蛋
+item.mud_man_2_spawn_egg.name=泥人2级刷怪蛋
+item.mud_man_3_spawn_egg.name=泥人3级刷怪蛋

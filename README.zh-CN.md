@@ -6,7 +6,7 @@
 
 ## 版本
 
-当前版本：`0.2.0`
+当前版本：`0.3.0`
 
 ## 功能
 
@@ -16,6 +16,8 @@
 - 修复并支持容器方块内容（例如箱子物品）跟随投影/生成
 - 提供世界生成参考包：`com.github.lunatrius.worldgen`
 - 支持六级标记战利品箱（用于世界生成）
+- 支持按结构统一配置（战利品 + 生物替换同一入口）
+- 内置 MudMan1/2/3 生物及对应刷怪蛋（`mud_man_1/2/3_spawn_egg`）
 
 ## 环境要求
 
@@ -119,13 +121,32 @@
 - 5级：金锭
 - 6级：钻石
 
-可编辑配置文件：
-`src/main/java/com/github/lunatrius/worldgen/WeightedTreasurePieces.java`
+统一可编辑配置文件：
+`src/main/java/com/github/lunatrius/worldgen/WorldgenStructureProfiles.java`
 
 你可以修改：
 
-- `LOOT_TABLES`：各等级战利品权重表
-- `MIN_ROLLS` / `MAX_ROLLS`：每级抽取次数区间
+- 结构别名到 profile 的绑定（实现按结构独立配置）
+- 标记物品到等级的映射
+- 各等级战利品表与抽取次数区间
+- 生物 1/2/3 级替换目标
+- 是否强制替换出来的骷髅手持铁剑
+
+当前默认 profile 绑定的结构别名：
+- `/assets/schematica/structures/10.schematic`
+- `assets/schematica/structures/10.schematic`
+- `10.schematic`
+- `10`
+
+### 实体替换调试开关
+
+可通过 JVM 参数打开调试日志：
+
+```powershell
+.\gradlew runClient -Dschematica.debug.entityReplacement=true
+```
+
+日志会输出结构 key、命中的 profile、识别等级、替换目标以及骷髅铁剑标记。
 
 ### 修改生成维度
 
@@ -145,8 +166,8 @@ private static final Dimension TARGET_DIMENSION = Dimension.OVERWORLD;
 
 也可一起调整：
 
-- `WEIGHT`：注册权重
-- `CHANCE`：触发概率分母（`1/chance`）
+- `WEIGHT_10`：注册权重
+- `CHANCE_10`：触发概率分母（`1/chance`）
 
 ## 安全限制
 

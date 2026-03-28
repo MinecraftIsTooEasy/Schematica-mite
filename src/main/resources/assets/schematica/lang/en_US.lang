@@ -150,3 +150,11 @@ schematica.command.download.usage=/schematicaDownload <name>
 schematica.command.download.started=Started downloading %s...
 schematica.command.download.downloadSucceeded=Successfully downloaded %s.
 schematica.command.download.downloadFail=Download failed.
+
+# entities
+entity.MudMan1.name=Mud Man I
+entity.MudMan2.name=Mud Man II
+entity.MudMan3.name=Mud Man III
+item.mud_man_1_spawn_egg.name=Mud Man I Spawn Egg
+item.mud_man_2_spawn_egg.name=Mud Man II Spawn Egg
+item.mud_man_3_spawn_egg.name=Mud Man III Spawn Egg

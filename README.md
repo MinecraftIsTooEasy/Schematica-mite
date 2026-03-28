@@ -6,7 +6,7 @@ Port of Schematica for MITE / FishModLoader.
 
 ## Version
 
-Current version: `0.2.0`
+Current version: `0.3.0`
 
 ## Features
 
@@ -16,6 +16,8 @@ Current version: `0.2.0`
 - Tile entity data preservation (e.g. chest inventory contents)
 - Worldgen reference package: `com.github.lunatrius.worldgen`
 - 6-level marker loot chest support for worldgen schematics
+- Unified per-structure worldgen profile (loot + entity replacement in one place)
+- Built-in MudMan 1/2/3 entities and corresponding spawn eggs (`mud_man_1/2/3_spawn_egg`)
 
 ## Requirements
 
@@ -119,13 +121,32 @@ Marker mapping:
 - Level 5: `gold ingot`
 - Level 6: `diamond`
 
-Editable config is in:
-`src/main/java/com/github/lunatrius/worldgen/WeightedTreasurePieces.java`
+Unified editable profile is in:
+`src/main/java/com/github/lunatrius/worldgen/WorldgenStructureProfiles.java`
 
 You can edit:
 
-- `LOOT_TABLES` for each level's weighted items
-- `MIN_ROLLS` / `MAX_ROLLS` for number of loot rolls per level
+- Structure alias -> profile binding (per-structure independent config)
+- Marker item -> level mapping
+- Loot table / roll range for each level
+- Entity replacement targets for levels 1/2/3
+- Whether replaced skeletons should be forced to hold an iron sword
+
+Current default profile is bound to aliases:
+- `/assets/schematica/structures/10.schematic`
+- `assets/schematica/structures/10.schematic`
+- `10.schematic`
+- `10`
+
+### Entity Replacement Debug
+
+Enable debug output with JVM arg:
+
+```powershell
+.\gradlew runClient -Dschematica.debug.entityReplacement=true
+```
+
+This prints structure key, matched profile, detected level, replacement target and iron-sword flag.
 
 ### Change Target Dimension
 
@@ -145,8 +166,8 @@ Available values:
 
 You can also tune:
 
-- `WEIGHT` (registration weight)
-- `CHANCE` (spawn chance divisor, `1/chance`)
+- `WEIGHT_10` (registration weight)
+- `CHANCE_10` (spawn chance divisor, `1/chance`)
 
 ## Safety Limits
 

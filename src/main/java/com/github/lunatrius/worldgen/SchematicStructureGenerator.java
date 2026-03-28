@@ -13,7 +13,9 @@ import net.minecraft.Block;
 import net.minecraft.CompressedStreamTools;
 import net.minecraft.Entity;
 import net.minecraft.EntityPlayer;
+import net.minecraft.EntitySkeleton;
 import net.minecraft.IInventory;
+import net.minecraft.Item;
 import net.minecraft.ItemStack;
 import net.minecraft.NBTTagCompound;
 import net.minecraft.NBTTagDouble;
@@ -26,6 +28,9 @@ import net.minecraft.WorldGenerator;
 public class SchematicStructureGenerator extends WorldGenerator {
     private static final int MIN_WORLD_Y = 0;
     private static final int MAX_WORLD_Y = 255;
+    private static final boolean DEBUG_ENTITY_REPLACEMENT = Boolean.parseBoolean(
+            System.getProperty("schematica.debug.entityReplacement", "false")
+    );
 
     private final String resourcePath;
     private ISchematic schematic;
@@ -104,7 +109,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
                 continue;
             }
 
-            int lootLevel = detectLootChestLevel(sourceBlock, tileEntity);
+            int lootLevel = detectLootChestLevel(this.resourcePath, sourceBlock, tileEntity);
             if (!applyTileEntityData(world, tileEntity, wx, wy, wz)) {
                 if (lootLevel > 0) {
                     ++lootChestFailed;
@@ -113,7 +118,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
             }
 
             if (lootLevel > 0) {
-                if (populateLootChest(world, random, wx, wy, wz, lootLevel)) {
+                if (populateLootChest(this.resourcePath, world, random, wx, wy, wz, lootLevel)) {
                     ++lootChestGenerated;
                 } else {
                     ++lootChestFailed;
@@ -140,17 +145,21 @@ public class SchematicStructureGenerator extends WorldGenerator {
 
         EntitySpawnResult entitySpawnResult = spawnEntities(world, originX, originY, originZ);
         if (entitySpawnResult.failed > 0) {
-            Reference.logger.warn("Worldgen schematic {} entity spawn result: spawned={}, failed={}, origin=[{},{},{}]",
+            Reference.logger.warn("Worldgen schematic {} entity spawn result: spawned={}, replaced={}, skipped={}, failed={}, origin=[{},{},{}]",
                     this.resourcePath,
                     entitySpawnResult.spawned,
+                    entitySpawnResult.replaced,
+                    entitySpawnResult.skipped,
                     entitySpawnResult.failed,
                     originX,
                     originY,
                     originZ);
-        } else if (entitySpawnResult.spawned > 0) {
-            Reference.logger.info("Worldgen schematic {} spawned {} entities at [{},{},{}]",
+        } else if (entitySpawnResult.spawned > 0 || entitySpawnResult.replaced > 0 || entitySpawnResult.skipped > 0) {
+            Reference.logger.info("Worldgen schematic {} entity result: spawned={}, replaced={}, skipped={} at [{},{},{}]",
                     this.resourcePath,
                     entitySpawnResult.spawned,
+                    entitySpawnResult.replaced,
+                    entitySpawnResult.skipped,
                     originX,
                     originY,
                     originZ);
@@ -175,6 +184,19 @@ public class SchematicStructureGenerator extends WorldGenerator {
                     }
 
                     NBTTagCompound worldTag = (NBTTagCompound)sourceTag.copy();
+                    EntityReplacementResult replacement = applyEntityReplacement(worldTag, this.resourcePath);
+                    if (replacement.skip) {
+                        ++result.skipped;
+                        continue;
+                    }
+                    if (!replacement.valid) {
+                        ++result.failed;
+                        continue;
+                    }
+                    if (replacement.replaced) {
+                        ++result.replaced;
+                    }
+
                     offsetEntityPosition(worldTag, originX, originY, originZ);
                     Entity copied = NBTHelper.readEntityFromCompound(worldTag, world);
                     if (copied == null || copied instanceof EntityPlayer) {
@@ -186,6 +208,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
                         continue;
                     }
 
+                    postProcessReplacedEntity(copied, replacement);
                     if (world.spawnEntityInWorld(copied)) {
                         ++result.spawned;
                     } else {
@@ -197,7 +220,27 @@ public class SchematicStructureGenerator extends WorldGenerator {
         }
 
         for (Entity sourceEntity : this.schematic.getEntities()) {
-            Entity copied = copyEntityAtWorldPosition(sourceEntity, world, originX, originY, originZ);
+            NBTTagCompound sourceTag = NBTHelper.writeEntityToCompound(sourceEntity);
+            if (sourceTag == null) {
+                ++result.failed;
+                continue;
+            }
+
+            EntityReplacementResult replacement = applyEntityReplacement(sourceTag, this.resourcePath);
+            if (replacement.skip) {
+                ++result.skipped;
+                continue;
+            }
+            if (!replacement.valid) {
+                ++result.failed;
+                continue;
+            }
+            if (replacement.replaced) {
+                ++result.replaced;
+            }
+
+            offsetEntityPosition(sourceTag, originX, originY, originZ);
+            Entity copied = NBTHelper.readEntityFromCompound(sourceTag, world);
             if (copied == null || copied instanceof EntityPlayer) {
                 ++result.failed;
                 continue;
@@ -207,6 +250,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
                 continue;
             }
 
+            postProcessReplacedEntity(copied, replacement);
             if (world.spawnEntityInWorld(copied)) {
                 ++result.spawned;
             } else {
@@ -214,6 +258,58 @@ public class SchematicStructureGenerator extends WorldGenerator {
             }
         }
         return result;
+    }
+
+    private static EntityReplacementResult applyEntityReplacement(NBTTagCompound tag, String structureKey) {
+        if (tag == null) {
+            return EntityReplacementResult.invalid();
+        }
+
+        WorldgenEntityReplacementRules.ReplacementDecision decision = WorldgenEntityReplacementRules.resolve(structureKey, tag);
+        String sourceId = decision.getSourceId();
+        String replacementId = decision.getReplacementId();
+        if (replacementId == null) {
+            return EntityReplacementResult.skip();
+        }
+
+        String normalizedReplacementId = replacementId.trim();
+        if (normalizedReplacementId.isEmpty()) {
+            return EntityReplacementResult.invalid();
+        }
+
+        boolean replaced = sourceId == null || !normalizedReplacementId.equals(sourceId);
+        if (replaced) {
+            tag.setString("id", normalizedReplacementId);
+        }
+
+        if (DEBUG_ENTITY_REPLACEMENT && decision.getDetectedLevel() > 0) {
+            Reference.logger.info(
+                    "Entity replacement debug: structure={}, rule={}, level={}, sourceId={}, targetId={}, replaced={}, forceSkeletonIronSword={}",
+                    structureKey,
+                    decision.getMatchedRuleId(),
+                    decision.getDetectedLevel(),
+                    sourceId,
+                    normalizedReplacementId,
+                    replaced,
+                    decision.isForceSkeletonIronSword()
+            );
+        }
+
+        return EntityReplacementResult.valid(replaced, normalizedReplacementId, decision.isForceSkeletonIronSword());
+    }
+
+    private static void postProcessReplacedEntity(Entity entity, EntityReplacementResult replacement) {
+        if (entity == null || replacement == null || replacement.replacementId == null) {
+            return;
+        }
+
+        if (!replacement.forceSkeletonIronSword) {
+            return;
+        }
+
+        if (entity instanceof EntitySkeleton) {
+            ((EntitySkeleton)entity).setCurrentItemOrArmor(0, new ItemStack(Item.swordIron));
+        }
     }
 
     private boolean ensureSchematicLoaded() {
@@ -297,7 +393,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
         }
     }
 
-    private static int detectLootChestLevel(Block sourceBlock, TileEntity sourceTileEntity) {
+    private static int detectLootChestLevel(String structureKey, Block sourceBlock, TileEntity sourceTileEntity) {
         if (!isLootChestBlock(sourceBlock) || !(sourceTileEntity instanceof IInventory)) {
             return 0;
         }
@@ -315,7 +411,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
             markerStack = stack;
         }
 
-        return WeightedTreasurePieces.getLevelForMarker(markerStack);
+        return WeightedTreasurePieces.getLevelForMarker(structureKey, markerStack);
     }
 
     private static boolean isLootChestBlock(Block block) {
@@ -335,7 +431,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
                 || blockId == Block.chestAncientMetal.blockID;
     }
 
-    private static boolean populateLootChest(World world, Random random, int x, int y, int z, int level) {
+    private static boolean populateLootChest(String structureKey, World world, Random random, int x, int y, int z, int level) {
         if (world == null || level <= 0) {
             return false;
         }
@@ -348,8 +444,8 @@ public class SchematicStructureGenerator extends WorldGenerator {
         IInventory inventory = (IInventory)tileEntity;
         clearInventory(inventory);
 
-        WeightedRandomChestContent[] contents = WeightedTreasurePieces.getContentsForLevel(level);
-        int rollCount = WeightedTreasurePieces.getRollCount(random, level);
+        WeightedRandomChestContent[] contents = WeightedTreasurePieces.getContentsForLevel(structureKey, level);
+        int rollCount = WeightedTreasurePieces.getRollCount(structureKey, random, level);
         if (contents.length > 0 && rollCount > 0 && random != null) {
             WeightedRandomChestContent.generateChestContents(
                     world,
@@ -358,7 +454,7 @@ public class SchematicStructureGenerator extends WorldGenerator {
                     contents,
                     inventory,
                     rollCount,
-                    WeightedTreasurePieces.getArtifactChances(level)
+                    WeightedTreasurePieces.getArtifactChances(structureKey, level)
             );
         }
         inventory.onInventoryChanged();
@@ -368,24 +464,6 @@ public class SchematicStructureGenerator extends WorldGenerator {
     private static void clearInventory(IInventory inventory) {
         for (int slot = 0; slot < inventory.getSizeInventory(); ++slot) {
             inventory.setInventorySlotContents(slot, null);
-        }
-    }
-
-    private static Entity copyEntityAtWorldPosition(Entity entity, World world, int originX, int originY, int originZ) {
-        if (entity == null || world == null) {
-            return null;
-        }
-
-        try {
-            NBTTagCompound tag = NBTHelper.writeEntityToCompound(entity);
-            if (tag == null) {
-                return null;
-            }
-
-            offsetEntityPosition(tag, originX, originY, originZ);
-            return NBTHelper.readEntityFromCompound(tag, world);
-        } catch (Exception ignored) {
-            return null;
         }
     }
 
@@ -412,5 +490,35 @@ public class SchematicStructureGenerator extends WorldGenerator {
     private static final class EntitySpawnResult {
         private int spawned;
         private int failed;
+        private int replaced;
+        private int skipped;
+    }
+
+    private static final class EntityReplacementResult {
+        private final boolean valid;
+        private final boolean skip;
+        private final boolean replaced;
+        private final String replacementId;
+        private final boolean forceSkeletonIronSword;
+
+        private EntityReplacementResult(boolean valid, boolean skip, boolean replaced, String replacementId, boolean forceSkeletonIronSword) {
+            this.valid = valid;
+            this.skip = skip;
+            this.replaced = replaced;
+            this.replacementId = replacementId;
+            this.forceSkeletonIronSword = forceSkeletonIronSword;
+        }
+
+        private static EntityReplacementResult valid(boolean replaced, String replacementId, boolean forceSkeletonIronSword) {
+            return new EntityReplacementResult(true, false, replaced, replacementId, forceSkeletonIronSword);
+        }
+
+        private static EntityReplacementResult invalid() {
+            return new EntityReplacementResult(false, false, false, null, false);
+        }
+
+        private static EntityReplacementResult skip() {
+            return new EntityReplacementResult(false, true, false, null, false);
+        }
     }
 }
